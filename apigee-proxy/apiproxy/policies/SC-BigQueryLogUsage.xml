@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ServiceCallout async="true" continueOnError="true" enabled="true" name="SC-BigQueryLogUsage">
+    <DisplayName>SC-BigQueryLogUsage</DisplayName>
+    <Properties/>
+    <Request clearPayload="true" variable="bqInsertRequest">
+        <Set>
+            <Headers>
+                <Header name="Authorization">Bearer {google.access_token}</Header>
+                <Header name="Content-Type">application/json</Header>
+            </Headers>
+            <Verb>POST</Verb>
+            <Payload contentType="application/json">{
+  "rows": [
+    {
+      "json": {
+        "timestamp": "{system.time}",
+        "department_id": "{dept.id}",
+        "department_name": "{dept.name}",
+        "model": "{apigee.req.model}",
+        "status_code": "{response.status.code}",
+        "prompt_tokens": "{llm.usage.prompt_tokens}",
+        "completion_tokens": "{llm.usage.completion_tokens}",
+        "total_tokens": "{llm.usage.total_tokens}",
+        "unit_price_per_1k_usd": "{llm.pricing.unit_usd}",
+        "estimated_cost_usd": "{llm.usage.cost_usd}",
+        "estimated_cost_krw": "{llm.usage.cost_krw}"
+      }
+    }
+  ]
+}</Payload>
+        </Set>
+    </Request>
+    <Response>bqInsertResponse</Response>
+    <HTTPTargetConnection>
+        <URL>https://bigquery.googleapis.com/bigquery/v2/projects/YOUR_GCP_PROJECT_ID/datasets/apigee_ai_governance/tables/llm_token_usage/insertAll</URL>
+    </HTTPTargetConnection>
+</ServiceCallout>

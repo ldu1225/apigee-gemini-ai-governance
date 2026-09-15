@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables async="false" continueOnError="false" enabled="true" name="EV-ExtractModelAndDept">
+    <DisplayName>EV-ExtractModelAndDept</DisplayName>
+    <Source clearPayload="false">request</Source>
+    <Header name="Authorization">
+        <Pattern ignoreCase="true">Bearer {dept_token}</Pattern>
+    </Header>
+    <Header name="x-dept-token">
+        <Pattern ignoreCase="true">{dept_token}</Pattern>
+    </Header>
+    <JSONPayload>
+        <Variable name="req.model" type="string">
+            <JSONPath>$.model</JSONPath>
+        </Variable>
+    </JSONPayload>
+    <VariablePrefix>apigee</VariablePrefix>
+</ExtractVariables>

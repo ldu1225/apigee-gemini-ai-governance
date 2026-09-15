@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apigee x Gemini AI Governance &amp; Chargeback (YOUR_GCP_PROJECT_ID)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    * {
+      word-break: keep-all;
+    }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #0f172a 0%, #060a12 100%);
+      color: #f8fafc;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-all;
+    }
+    .stage-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.9) 100%);
+      border: 1.5px solid rgba(148, 163, 184, 0.22);
+      backdrop-filter: blur(16px);
+      transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+    .stage-card:hover, .stage-card.active-stage {
+      border-color: #38bdf8;
+      background: linear-gradient(180deg, rgba(30, 58, 138, 0.45) 0%, rgba(15, 23, 42, 0.95) 100%);
+      box-shadow: 0 12px 30px -8px rgba(56, 189, 248, 0.35);
+      transform: translateY(-3px);
+    }
+    .stage-card-danger:hover, .stage-card-danger.active-stage {
+      border-color: #f43f5e;
+      background: linear-gradient(180deg, rgba(136, 19, 55, 0.45) 0%, rgba(15, 23, 42, 0.95) 100%);
+      box-shadow: 0 12px 30px -8px rgba(244, 63, 94, 0.4);
+      transform: translateY(-3px);
+    }
+    .code-selectable {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-20">
+  <!-- Top Header Bar -->
+  <header class="border-b border-slate-800/80 bg-slate-950/90 sticky top-0 z-50 backdrop-blur-md">
+    <div class="max-w-[1500px] mx-auto px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 flex items-center justify-center font-black text-lg text-white shadow-lg shadow-blue-500/25">
+          G
+        </div>
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 class="text-xl font-extrabold text-white tracking-tight">
+              Google Cloud Apigee x Gemini Enterprise Governance
+            </h1>
+            <span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+              ● Project: YOUR_GCP_PROJECT_ID
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            부서별 모델 호출 권한 제어(RaiseFault 403 차단) 및 Looker Studio / BigQuery 실시간 정산(Chargeback) 아키텍처 시연
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5">
+        <button id="btnResetBq" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5 whitespace-nowrap">
+          <span>🗑️</span>
+          <span>BigQuery 0건 초기화</span>
+        </button>
+        <button id="btnSeedTraffic" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 transition flex items-center gap-1.5 whitespace-nowrap">
+          <span>⚡</span>
+          <span>실제 Vertex AI &amp; Apigee 4건 연속 호출</span>
+        </button>
+        <button id="btnRefreshDashboard" class="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition flex items-center gap-1.5 whitespace-nowrap">
+          <span>🔄</span>
+          <span>대시보드 새로고침</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1500px] mx-auto px-8 mt-7 space-y-7">
+    <!-- =====================================================================
+         SECTION 1: 4-STAGE HORIZONTAL ARCHITECTURE PIPELINE (ZERO WRAPPING!)
+         ===================================================================== -->
+    <section class="rounded-3xl bg-slate-900/60 border border-slate-800/90 p-7 shadow-2xl">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span class="px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider rounded-md bg-blue-600 text-white">
+              ARCHITECTURE PIPELINE
+            </span>
+            <h2 class="text-lg font-extrabold text-white">
+              Apigee AI Gateway 부서별 모델 권한 제어(RBAC) 및 BigQuery 실시간 정산 파이프라인
+            </h2>
+          </div>
+          <p class="text-xs text-slate-300 mt-1">
+            각 단계(Step 1 ~ Step 4) 카드를 클릭하거나 마우스를 올리면, 아래 <strong>코드 &amp; 헤더 상세 뷰어</strong>에 실제 실행되는 HTTP 헤더, Apigee XML 정책 코드, BigQuery SQL이 표시됩니다.
+          </p>
+        </div>
+
+        <!-- Quick Inspector Selector Pills -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button data-node="client" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white transition">
+            ① 요청 헤더 &amp; Body
+          </button>
+          <button data-node="ev" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            ② EV 변수추출 XML
+          </button>
+          <button data-node="rf" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-500/40 transition">
+            ③ RaiseFault 403 차단 XML
+          </button>
+          <button data-node="vertex" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            ④ Vertex AI 응답 &amp; 토큰
+          </button>
+          <button data-node="sc" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            ⑤ BigQuery 전송 XML
+          </button>
+          <button data-node="bq" class="tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            ⑥ Looker Studio SQL 뷰
+          </button>
+        </div>
+      </div>
+
+      <!-- Strictly 4 Horizontal Columns (grid-cols-12: 3 + 3 + 3 + 3 = 12) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        <!-- STAGE 1: Client Departments (3 cols) -->
+        <div id="nodeClient" data-node="client" class="stage-card active-stage lg:col-span-3 rounded-2xl p-5 flex flex-col justify-between relative">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                STEP 1. 부서 클라이언트
+              </span>
+              <span class="text-xs text-slate-400 font-semibold">API 호출 주체</span>
+            </div>
+            <h3 class="text-base font-extrabold text-white mb-3">부서별 API 토큰 및 권한</h3>
+
+            <div class="space-y-2.5 text-xs">
+              <div class="p-3 rounded-xl bg-slate-950/90 border border-blue-500/40">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-blue-400">A 부서 (AI 연구개발팀)</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300">고성능+일반</span>
+                </div>
+                <div class="mt-2 flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">3.5 Flash ✅</span>
+                  <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">3.1 Pro ✅</span>
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-950/90 border border-teal-500/40">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-teal-300">B 부서 (품질관리팀)</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-500/20 text-teal-300">일반 업무용</span>
+                </div>
+                <div class="mt-2 flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">3.5 Flash ✅</span>
+                  <span class="px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/50 font-extrabold">3.1 Pro 🚫 불가</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-blue-300 font-bold">
+            <span>🔍 요청 HTTP 헤더 &amp; Body 보기</span>
+            <span class="text-base">➔</span>
+          </div>
+        </div>
+
+        <!-- STAGE 2: Apigee AI Gateway RBAC & RaiseFault (3 cols) -->
+        <div id="nodeRF" data-node="rf" class="stage-card stage-card-danger lg:col-span-3 rounded-2xl p-5 flex flex-col justify-between relative">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-indigo-500/25 text-indigo-300 border border-indigo-500/40">
+                STEP 2. Apigee Gateway
+              </span>
+              <span class="px-2 py-0.5 rounded text-[11px] font-extrabold bg-rose-600 text-white">
+                PreFlow 검증
+              </span>
+            </div>
+            <h3 class="text-base font-extrabold text-white mb-3">모델 권한 검증 &amp; 403 차단</h3>
+
+            <div class="space-y-2.5 text-xs">
+              <div data-node="ev" class="p-3 rounded-xl bg-slate-950/90 border border-amber-500/40 hover:border-amber-400 transition">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-amber-300">① EV-ExtractModelAndDept</span>
+                  <span class="text-[10px] text-amber-200/80 font-mono">ExtractVariables</span>
+                </div>
+                <p class="text-slate-300 mt-1 leading-relaxed">
+                  헤더에서 <code class="mono text-amber-300">Bearer {토큰}</code> 추출 + Body에서 <code class="mono text-amber-300">$.model</code> 추출
+                </p>
+              </div>
+
+              <div data-node="rf" class="p-3 rounded-xl bg-rose-950/50 border border-rose-500/60">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-rose-300">② RF-UnauthorizedModel403</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-600 text-white whitespace-nowrap">403 즉시 차단</span>
+                </div>
+                <p class="text-rose-200 mt-1 leading-relaxed">
+                  B부서가 <code class="mono">gemini-3.1-pro</code> 호출 시 <strong>Vertex AI 도달 전 게이트웨이가 즉시 차단!</strong>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-rose-300 font-bold">
+            <span>🔍 Apigee RaiseFault XML 보기</span>
+            <span class="text-base">➔</span>
+          </div>
+        </div>
+
+        <!-- STAGE 3: Vertex AI Gemini & PostFlow Collector (3 cols) -->
+        <div id="nodeVertex" data-node="vertex" class="stage-card lg:col-span-3 rounded-2xl p-5 flex flex-col justify-between relative">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                STEP 3. Vertex AI &amp; 수집
+              </span>
+              <span class="text-xs text-emerald-400 font-bold">200 OK 통과 시</span>
+            </div>
+            <h3 class="text-base font-extrabold text-white mb-3">실제 LLM 추론 &amp; 토큰 추출</h3>
+
+            <div class="space-y-2.5 text-xs">
+              <div data-node="vertex" class="p-3 rounded-xl bg-slate-950/90 border border-sky-500/40">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-sky-300">Vertex AI Gemini (YOUR_GCP_PROJECT_ID)</span>
+                </div>
+                <div class="mt-1.5 grid grid-cols-2 gap-2 text-[11px]">
+                  <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
+                    <div class="font-bold text-sky-300">3.5 Flash</div>
+                    <div class="text-slate-400">$0.15 / 1M 토큰</div>
+                  </div>
+                  <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
+                    <div class="font-bold text-indigo-300">3.1 Pro</div>
+                    <div class="text-slate-400">$1.25 / 1M (8.3배)</div>
+                  </div>
+                </div>
+              </div>
+
+              <div data-node="sc" class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40">
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-emerald-300">③ SC-BigQueryLogUsage</span>
+                  <span class="text-[10px] text-emerald-300 font-mono">PostFlow</span>
+                </div>
+                <p class="text-slate-300 mt-1 leading-relaxed">
+                  응답 <code class="mono text-emerald-300">usageMetadata</code>의 실측 토큰 수 × 모델 단가를 곱해 BigQuery 전송
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-sky-300 font-bold">
+            <span>🔍 실측 usageMetadata &amp; XML 보기</span>
+            <span class="text-base">➔</span>
+          </div>
+        </div>
+
+        <!-- STAGE 4: BigQuery & Looker Studio Chargeback BI (3 cols) -->
+        <div id="nodeBQ" data-node="bq" class="stage-card lg:col-span-3 rounded-2xl p-5 flex flex-col justify-between relative">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                STEP 4. 실시간 정산 BI
+              </span>
+              <span class="text-xs text-amber-300 font-bold">Chargeback</span>
+            </div>
+            <h3 class="text-base font-extrabold text-white mb-3">BigQuery &amp; Looker Studio</h3>
+
+            <div class="space-y-2.5 text-xs">
+              <div class="p-3 rounded-xl bg-slate-950/90 border border-amber-500/40">
+                <div class="font-extrabold text-amber-300">Google Cloud BigQuery 원장</div>
+                <div class="text-slate-300 mono text-[11px] mt-1">
+                  YOUR_GCP_PROJECT_ID.<br/>apigee_ai_governance.llm_token_usage
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-950/90 border border-blue-500/40">
+                <div class="font-extrabold text-blue-300">Looker Studio 실시간 정산 뷰</div>
+                <div class="text-slate-300 mono text-[11px] mt-1">
+                  v_looker_dept_model_chargeback
+                </div>
+                <div class="text-slate-400 text-[11px] mt-1">
+                  부서별 × 모델별 토큰 소비량 및 원화(₩) 정산액 실시간 자동 집계
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-amber-300 font-bold">
+            <span>🔍 Looker Studio SQL 뷰 코드 보기</span>
+            <span class="text-base">➔</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           LIVE CODE & HEADER INSPECTOR PANEL (SELECTABLE & HIGH READABILITY)
+           =================================================================== -->
+      <div class="mt-6 rounded-2xl bg-slate-950 border-2 border-blue-500/40 p-5 shadow-xl">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <span id="inspectorBadge" class="px-3 py-1 rounded-lg text-xs font-extrabold bg-blue-600 text-white">
+              ① 클라이언트 요청 헤더 &amp; Body
+            </span>
+            <h3 id="inspectorTitle" class="text-sm md:text-base font-extrabold text-white">
+              현업 개발자가 Apigee 게이트웨이로 전송하는 실제 HTTP 헤더 및 Gemini API JSON Body
+            </h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">마우스로 드래그하거나 우측 버튼으로 복사하세요:</span>
+            <button id="btnCopyInspector" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 transition">
+              📋 코드 전체 복사
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-4 items-stretch">
+          <div class="lg:col-span-4 flex flex-col justify-between bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+            <div>
+              <div class="text-xs font-extrabold uppercase tracking-wider text-blue-400 mb-2">아키텍처 동작 설명</div>
+              <p id="inspectorDesc" class="text-sm text-slate-200 leading-relaxed">
+                현업 개발자는 별도의 토큰 수집 코드를 작성할 필요 없이, 기존 Gemini API 규격 그대로 접속 주소만 Apigee Gateway로 바꾸고 부서 토큰(Authorization: Bearer ...)을 헤더에 넣어 호출합니다.
+              </p>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-800 text-xs text-slate-400">
+              💡 위 4개 단계 카드 또는 6개 탭 버튼을 클릭하면 해당 단계의 실제 코드로 즉시 전환됩니다.
+            </div>
+          </div>
+
+          <div class="lg:col-span-8">
+            <pre id="inspectorCodeBox" class="code-selectable mono text-xs md:text-sm leading-relaxed p-4 rounded-xl bg-black border border-slate-800 text-emerald-300 overflow-x-auto max-h-64">POST /v1/models:generateContent HTTP/1.1
+Host: apigee-gateway.YOUR_GCP_PROJECT_ID.cloud.goog
+Authorization: Bearer dept-a-rnd-token-2026   <-- [부서 식별용 API 토큰]
+Content-Type: application/json
+
+{
+  "model": "gemini-3.1-pro",                      <-- [호출 희망 모델명]
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        { "text": "엔터프라이즈 마이크로서비스 장애 대응 매뉴얼 및 아키텍처 설계 기준 요약해줘" }
+      ]
+    }
+  ]
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         SECTION 2: POSTMAN SIMULATOR & LOOKER STUDIO REAL-TIME DASHBOARD
+         ===================================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left Column (5 cols): Live Postman Simulator -->
+      <section class="lg:col-span-5 bg-slate-900/70 rounded-3xl p-6 border border-slate-800 flex flex-col justify-between space-y-5">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-amber-500 text-slate-950">
+                POSTMAN / API TESTER
+              </span>
+              <h2 class="text-lg font-extrabold text-white">시나리오별 실시간 호출 시연기</h2>
+            </div>
+            <span class="text-xs text-slate-400 mono">POST /v1/models:generateContent</span>
+          </div>
+
+          <!-- 4 Scenario Preset Buttons -->
+          <div class="space-y-2.5 mb-5">
+            <button id="btnScenario1" class="w-full text-left p-3.5 rounded-2xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 hover:border-blue-500 transition flex items-center justify-between">
+              <div>
+                <div class="text-sm font-extrabold text-blue-400">[1단계 시연] A 부서 (AI 연구개발팀) ➔ gemini-3.5-flash</div>
+                <div class="text-xs text-slate-300 mt-0.5">인가된 가성비 기본 모델 호출 ($0.15/1M 토큰)</div>
+              </div>
+              <span class="px-3 py-1 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                200 OK
+              </span>
+            </button>
+
+            <button id="btnScenario2" class="w-full text-left p-3.5 rounded-2xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 hover:border-indigo-500 transition flex items-center justify-between">
+              <div>
+                <div class="text-sm font-extrabold text-indigo-400">[1단계 시연] A 부서 (AI 연구개발팀) ➔ gemini-3.1-pro</div>
+                <div class="text-xs text-slate-300 mt-0.5">인가된 고성능 모델 호출 ($1.25/1M 토큰, 8.3배 단가)</div>
+              </div>
+              <span class="px-3 py-1 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                200 OK
+              </span>
+            </button>
+
+            <button id="btnScenario3" class="w-full text-left p-3.5 rounded-2xl bg-slate-950 hover:bg-slate-800/90 border border-slate-800 hover:border-teal-500 transition flex items-center justify-between">
+              <div>
+                <div class="text-sm font-extrabold text-teal-300">[2단계 시연 A] B 부서 (품질관리팀) ➔ gemini-3.5-flash</div>
+                <div class="text-xs text-slate-300 mt-0.5">품질관리팀 인가된 기본 모델 호출 ($0.15/1M 토큰)</div>
+              </div>
+              <span class="px-3 py-1 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                200 OK
+              </span>
+            </button>
+
+            <button id="btnScenario4" class="w-full text-left p-3.5 rounded-2xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/60 transition flex items-center justify-between">
+              <div>
+                <div class="text-sm font-extrabold text-rose-300">🚨 [2단계 시연 B] B 부서 (품질관리팀) ➔ gemini-3.1-pro 무단 호출</div>
+                <div class="text-xs text-rose-200 mt-0.5">Apigee RaiseFault 정책이 백엔드 도달 전 즉시 403 차단!</div>
+              </div>
+              <span class="px-3 py-1 rounded-lg text-xs font-extrabold bg-rose-600 text-white shadow whitespace-nowrap">
+                403 차단
+              </span>
+            </button>
+          </div>
+
+          <!-- Request Header & Payload Preview -->
+          <div class="space-y-3">
+            <div>
+              <div class="flex items-center justify-between text-xs font-bold text-slate-300 mb-1">
+                <span>전송되는 HTTP Request Headers (드래그 가능)</span>
+                <span id="reqDeptBadge" class="text-blue-400 font-extrabold">A 부서 (AI 연구개발팀)</span>
+              </div>
+              <pre id="reqHeadersBox" class="code-selectable mono text-xs p-3 rounded-xl bg-black border border-slate-800 text-amber-300 overflow-x-auto">Authorization: Bearer dept-a-rnd-token-2026
+Content-Type: application/json</pre>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between text-xs font-bold text-slate-300 mb-1">
+                <span>전송되는 HTTP Request Body (표준 Gemini API JSON)</span>
+                <button id="btnCopyCurl" class="text-xs text-blue-400 hover:underline font-bold">📋 cURL 명령어 복사</button>
+              </div>
+              <pre id="reqBodyBox" class="code-selectable mono text-xs p-3 rounded-xl bg-black border border-slate-800 text-sky-300 overflow-x-auto">{
+  "model": "gemini-3.5-flash",
+  "contents": [{"role": "user", "parts": [{"text": "글로벌 클라우드 아키텍처 보안 감사 체크리스트 1줄 요약해줘"}]}]
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Response Output Box -->
+        <div class="pt-3 border-t border-slate-800">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-extrabold text-white">Apigee Gateway &amp; Vertex AI 실시간 응답 결과</span>
+            <span id="resStatusBadge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-slate-300">
+              호출 대기 중
+            </span>
+          </div>
+          <pre id="resBodyBox" class="code-selectable mono text-xs leading-relaxed p-3.5 rounded-2xl bg-black border border-slate-800 text-emerald-300 h-52 overflow-y-auto whitespace-pre-wrap">위의 4개 시연 버튼 중 하나를 클릭하면 Apigee 게이트웨이의 응답(200 OK 또는 403 Forbidden) 및 BigQuery 실시간 정산 메타데이터가 여기에 표시됩니다.</pre>
+        </div>
+      </section>
+
+      <!-- Right Column (7 cols): Real-Time BigQuery & Looker Studio Chargeback Dashboard -->
+      <section class="lg:col-span-7 bg-slate-900/70 rounded-3xl p-6 border border-slate-800 space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <span class="px-2.5 py-1 text-xs font-extrabold rounded-md bg-blue-600 text-white">
+                LOOKER STUDIO / BIGQUERY BI
+              </span>
+              <h2 class="text-lg font-extrabold text-white">부서 × 모델별 실시간 토큰 사용량 &amp; 비용 정산 대시보드</h2>
+            </div>
+            <p class="text-xs text-slate-300 mt-1">
+              BigQuery 뷰: <code class="mono text-emerald-400 font-bold">YOUR_GCP_PROJECT_ID.apigee_ai_governance.v_looker_dept_model_chargeback</code>
+            </p>
+          </div>
+
+          <a href="https://lookerstudio.google.com/" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center gap-2">
+            <span>📊</span>
+            <span>Looker Studio 열기 ↗</span>
+          </a>
+        </div>
+
+        <!-- 4 Summary KPI Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            <div class="text-xs text-slate-300 font-bold">A 부서 (AI 연구개발팀) 정산액</div>
+            <div id="kpiDeptAKrw" class="text-xl font-extrabold text-blue-400 mt-1">₩0.00</div>
+            <div id="kpiDeptATokens" class="text-xs text-slate-400 mt-1">0 토큰 (Flash + Pro)</div>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            <div class="text-xs text-slate-300 font-bold">B 부서 (품질관리팀) 정산액</div>
+            <div id="kpiDeptBKrw" class="text-xl font-extrabold text-teal-300 mt-1">₩0.00</div>
+            <div id="kpiDeptBTokens" class="text-xs text-slate-400 mt-1">0 토큰 (Flash 전용)</div>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40">
+            <div class="text-xs text-rose-300 font-bold">Apigee 403 무단 호출 차단</div>
+            <div id="kpiBlockedCount" class="text-xl font-extrabold text-rose-400 mt-1">0 건</div>
+            <div class="text-xs text-rose-300/90 mt-1">B 부서 ➔ Gemini 3.1 Pro</div>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40">
+            <div class="text-xs text-emerald-300 font-bold">Apigee 예산 절감액 (방어액)</div>
+            <div id="kpiPreventedKrw" class="text-xl font-extrabold text-emerald-400 mt-1">₩0.00</div>
+            <div class="text-xs text-emerald-300/90 mt-1">무단 Pro 호출 사전 차단</div>
+          </div>
+        </div>
+
+        <!-- Two Charts: 1) Department x Model Token Usage, 2) Department x Model Chargeback Cost -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-extrabold text-white">📈 부서별 × 모델별 누적 토큰 사용량</h3>
+              <span class="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold">실시간 토큰</span>
+            </div>
+            <div class="h-52">
+              <canvas id="chartTokens"></canvas>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-extrabold text-white">💰 부서별 × 모델별 정산 금액 (원화 ₩)</h3>
+              <span class="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">공식 단가 적용</span>
+            </div>
+            <div class="h-52">
+              <canvas id="chartChargeback"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- BigQuery Live Table Breakdown -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+            <h3 class="text-sm font-extrabold text-white">
+              📋 BigQuery 실시간 정산 명세표 (<code class="mono text-blue-400">v_looker_dept_model_chargeback</code>)
+            </h3>
+            <span class="text-xs text-slate-300 mono">
+              공식 단가: 3.5 Flash (In $0.15/1M, Out $0.60/1M) | 3.1 Pro (In $1.25/1M, Out $5.00/1M)
+            </span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-800">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-950 text-slate-300 border-b border-slate-800 font-bold">
+                <tr>
+                  <th class="py-3 px-3.5">부서명 (Department)</th>
+                  <th class="py-3 px-3.5">모델명 (Gemini Model)</th>
+                  <th class="py-3 px-3.5 text-right">정상(200)</th>
+                  <th class="py-3 px-3.5 text-right">차단(403)</th>
+                  <th class="py-3 px-3.5 text-right">총 소비 토큰 수</th>
+                  <th class="py-3 px-3.5 text-right">1M당 단가</th>
+                  <th class="py-3 px-3.5 text-right">최종 정산 금액 (KRW)</th>
+                  <th class="py-3 px-3.5 text-right">차단 예산 방어액</th>
+                </tr>
+              </thead>
+              <tbody id="summaryTableBody" class="divide-y divide-slate-800/70 bg-slate-950/80 text-sm">
+                <!-- Populated safely via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- =====================================================================
+         SECTION 3: RECENT AUDIT LOG & LOOKER STUDIO DIRECT CONNECT
+         ===================================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <section class="lg:col-span-7 bg-slate-900/70 rounded-3xl p-6 border border-slate-800">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+            <span>🛡️</span>
+            <span>Apigee AI Gateway 실시간 감사 로그 (최근 호출 및 403 차단 이력)</span>
+          </h3>
+          <span class="text-xs text-slate-400">BigQuery 스트리밍 원장</span>
+        </div>
+        <div class="overflow-x-auto rounded-2xl border border-slate-800">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-950 text-slate-300 border-b border-slate-800 font-bold">
+              <tr>
+                <th class="py-2.5 px-3.5">시각 (UTC)</th>
+                <th class="py-2.5 px-3.5">부서명</th>
+                <th class="py-2.5 px-3.5">요청 모델</th>
+                <th class="py-2.5 px-3.5">Apigee 상태</th>
+                <th class="py-2.5 px-3.5 text-right">토큰 수</th>
+                <th class="py-2.5 px-3.5 text-right">정산/방어 금액</th>
+              </tr>
+            </thead>
+            <tbody id="recentLogsTableBody" class="divide-y divide-slate-800/70 bg-slate-950/80 text-xs">
+              <!-- Populated safely via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="lg:col-span-5 bg-slate-900/70 rounded-3xl p-6 border border-slate-800 space-y-4">
+        <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+          <span>🔗</span>
+          <span>Looker Studio 10초 연동 정보 (YOUR_GCP_PROJECT_ID)</span>
+        </h3>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Looker Studio에서 <strong>BigQuery 커넥터</strong>를 선택한 뒤 아래 프로젝트와 뷰를 그대로 선택하면 동일한 부서별 × 모델별 정산 차트가 생성됩니다:
+        </p>
+        <div class="space-y-2.5 text-xs mono bg-black p-4 rounded-2xl border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">BigQuery Project ID:</span>
+            <span id="guideProjectId" class="text-emerald-400 font-bold">YOUR_GCP_PROJECT_ID</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Dataset ID:</span>
+            <span class="text-blue-300 font-bold">apigee_ai_governance</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Looker Studio View:</span>
+            <span class="text-amber-300 font-bold">v_looker_dept_model_chargeback</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    let tokenChart = null;
+    let chargebackChart = null;
+
+    // Code & Header Inspector Details for each Architecture Node
+    const NODE_INSPECTOR_DATA = {
+      client: {
+        badge: "① 클라이언트 요청 헤더 & Body",
+        title: "현업 부서 개발자가 Apigee 게이트웨이로 전송하는 실제 HTTP 헤더 및 Gemini API JSON Body",
+        desc: "현업 개발자는 별도의 토큰 수집 코드를 작성할 필요 없이, 기존 Gemini API 규격 그대로 접속 주소만 Apigee Gateway로 바꾸고 부서 토큰(Authorization: Bearer ...)을 헤더에 넣어 호출합니다.",
+        code: `POST /v1/models:generateContent HTTP/1.1
+Host: apigee-gateway.YOUR_GCP_PROJECT_ID.cloud.goog
+Authorization: Bearer dept-a-rnd-token-2026   <-- [부서 식별용 API 토큰]
+Content-Type: application/json
+
+{
+  "model": "gemini-3.1-pro",                      <-- [호출 희망 모델명]
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        { "text": "엔터프라이즈 마이크로서비스 장애 대응 매뉴얼 및 아키텍처 설계 기준 요약해줘" }
+      ]
+    }
+  ]
+}`
+      },
+      ev: {
+        badge: "② Apigee ExtractVariables 정책 (EV-ExtractModelAndDept.xml)",
+        title: "HTTP 헤더에서 부서 토큰을 추출하고 JSON Body에서 $.model을 파싱하는 실제 Apigee XML 정책",
+        desc: "Apigee 게이트웨이의 PreFlow 첫 단계에서 실행되는 XML 정책입니다. 정규표현식으로 Authorization 헤더의 Bearer 토큰을 추출하고, JSONPath($.model)로 요청 모델을 변수에 저장합니다.",
+        code: `<!-- /apigee-proxy/apiproxy/policies/EV-ExtractModelAndDept.xml -->
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables async="false" continueOnError="false" enabled="true" name="EV-ExtractModelAndDept">
+    <DisplayName>EV-ExtractModelAndDept</DisplayName>
+    <Source clearPayload="false">request</Source>
+    <Header name="Authorization">
+        <Pattern ignoreCase="true">Bearer {dept_token}</Pattern>
+    </Header>
+    <JSONPayload>
+        <Variable name="req.model" type="string">
+            <JSONPath>$.model</JSONPath>
+        </Variable>
+    </JSONPayload>
+    <VariablePrefix>apigee</VariablePrefix>
+</ExtractVariables>`
+      },
+      rf: {
+        badge: "③ Apigee RaiseFault 403 차단 정책 (RF-UnauthorizedModel403.xml)",
+        title: "권한이 없는 부서(B부서 품질관리팀)가 고단가 Gemini 3.1 Pro 호출 시 즉시 차단하는 Apigee XML 정책",
+        desc: "ProxyEndpoint PreFlow에서 (apigee.dept_token = \"dept-b-quality-token-2026\") and (apigee.req.model = \"gemini-3.1-pro\") 조건이 일치하면 Vertex AI 백엔드로 요청을 보내기 전에 즉시 HTTP 403 Forbidden을 반환하여 예산 오남용을 원천 차단합니다.",
+        code: `<!-- /apigee-proxy/apiproxy/policies/RF-UnauthorizedModel403.xml -->
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault async="false" continueOnError="false" enabled="true" name="RF-UnauthorizedModel403">
+    <FaultResponse>
+        <Set>
+            <Headers>
+                <Header name="Content-Type">application/json; charset=utf-8</Header>
+                <Header name="X-Apigee-Policy">RF-UnauthorizedModel403</Header>
+            </Headers>
+            <Payload contentType="application/json">{
+  "error": {
+    "code": 403,
+    "status": "PERMISSION_DENIED",
+    "message": "Access Denied: Quality Dept is not authorized to call [gemini-3.1-pro].",
+    "policy": "Apigee-RaiseFault-Model-RBAC",
+    "department": "B 부서 (품질관리팀)",
+    "requested_model": "gemini-3.1-pro",
+    "allowed_models": ["gemini-3.5-flash"]
+  }
+}</Payload>
+            <StatusCode>403</StatusCode>
+            <ReasonPhrase>Forbidden</ReasonPhrase>
+        </Set>
+    </FaultResponse>
+</RaiseFault>`
+      },
+      vertex: {
+        badge: "④ Google Cloud Vertex AI Gemini 응답 및 실측 usageMetadata",
+        title: "인가된 요청(200 OK) 시 Vertex AI가 반환하는 실제 LLM 응답 및 토큰 소비량 메타데이터",
+        desc: "Apigee 권한 검증을 통과한 요청만 Vertex AI 엔드포인트(YOUR_GCP_PROJECT_ID 프로젝트)에 도달합니다. Vertex AI는 추론 결과와 함께 usageMetadata 필드에 정확한 입력/출력 토큰 수를 담아 반환합니다.",
+        code: `// Vertex AI Gemini API Response (HTTP 200 OK)
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          { "text": "고체 전해질과 전극 계면에 완충 코팅층을 도입하여 계면 저항을 저감합니다." }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 24,       <-- [실제 입력 프롬프트 토큰 수]
+    "candidatesTokenCount": 41,   <-- [실제 생성 답변 토큰 수]
+    "totalTokenCount": 1905       <-- [총 과금 대상 토큰 수]
+  }
+}`
+      },
+      sc: {
+        badge: "⑤ Apigee ServiceCallout BigQuery 스트리밍 정책 (SC-BigQueryLogUsage.xml)",
+        title: "응답에서 추출한 토큰 수와 모델별 단가를 곱해 BigQuery로 실시간 전송하는 Apigee XML 정책",
+        desc: "PostFlow에서 실행되는 ServiceCallout 정책입니다. usageMetadata의 토큰 수에 Gemini 3.5 Flash($0.15/1M) 또는 Gemini 3.1 Pro($1.25/1M) 단가를 곱하여 BigQuery Streaming API(insertAll)로 실시간 적재합니다.",
+        code: `<!-- /apigee-proxy/apiproxy/policies/SC-BigQueryLogUsage.xml -->
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ServiceCallout async="true" continueOnError="true" enabled="true" name="SC-BigQueryLogUsage">
+    <Request clearPayload="true" variable="bqInsertRequest">
+        <Set>
+            <Verb>POST</Verb>
+            <Payload contentType="application/json">{
+  "rows": [{
+    "json": {
+      "timestamp": "{system.time}",
+      "department_name": "{dept.name}",
+      "model": "{apigee.req.model}",
+      "status_code": "{response.status.code}",
+      "total_tokens": "{llm.usage.total_tokens}",
+      "estimated_cost_usd": "{llm.usage.cost_usd}",
+      "estimated_cost_krw": "{llm.usage.cost_krw}"
+    }
+  }]
+}</Payload>
+        </Set>
+    </Request>
+    <HTTPTargetConnection>
+        <URL>https://bigquery.googleapis.com/bigquery/v2/projects/YOUR_GCP_PROJECT_ID/datasets/apigee_ai_governance/tables/llm_token_usage/insertAll</URL>
+    </HTTPTargetConnection>
+</ServiceCallout>`
+      },
+      bq: {
+        badge: "⑥ Google BigQuery & Looker Studio 정산 뷰 (v_looker_dept_model_chargeback)",
+        title: "Looker Studio 대시보드에서 실시간으로 조회하는 BigQuery 부서별 × 모델별 비용 정산 SQL 뷰",
+        desc: "BigQuery에 적재된 실시간 호출 로그(llm_token_usage)를 부서명(department_name)과 모델명(model) 기준으로 집계하여 Looker Studio 막대그래프와 정산 테이블에 즉시 제공합니다.",
+        code: `-- BigQuery View: YOUR_GCP_PROJECT_ID.apigee_ai_governance.v_looker_dept_model_chargeback
+CREATE OR REPLACE VIEW \`YOUR_GCP_PROJECT_ID.apigee_ai_governance.v_looker_dept_model_chargeback\` AS
+SELECT
+  department_id,
+  department_name,
+  model,
+  COUNTIF(status_code = 200) AS successful_calls,
+  COUNTIF(status_code = 403) AS blocked_403_calls,
+  SUM(IF(status_code = 200, total_tokens, 0)) AS total_tokens,
+  ROUND(SUM(IF(status_code = 200, estimated_cost_usd, 0)), 6) AS total_chargeback_usd,
+  ROUND(SUM(IF(status_code = 200, estimated_cost_krw, 0)), 2) AS total_chargeback_krw,
+  ROUND(SUM(IF(status_code = 403, prevented_cost_krw, 0)), 2) AS total_prevented_cost_krw
+FROM
+  \`YOUR_GCP_PROJECT_ID.apigee_ai_governance.llm_token_usage\`
+GROUP BY
+  department_id, department_name, model;`
+      }
+    };
+
+    function selectInspectorNode(nodeKey) {
+      const info = NODE_INSPECTOR_DATA[nodeKey];
+      if (!info) return;
+
+      document.querySelectorAll(".stage-card").forEach((el) => {
+        el.classList.remove("active-stage");
+      });
+      document.querySelectorAll(".tab-pill").forEach((el) => {
+        if (el.getAttribute("data-node") === nodeKey) {
+          el.className = "tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white transition shadow";
+        } else {
+          el.className = "tab-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition";
+        }
+      });
+
+      const stageMap = {
+        client: "nodeClient",
+        ev: "nodeRF",
+        rf: "nodeRF",
+        vertex: "nodeVertex",
+        sc: "nodeVertex",
+        bq: "nodeBQ"
+      };
+      const cardEl = document.getElementById(stageMap[nodeKey]);
+      if (cardEl) cardEl.classList.add("active-stage");
+
+      setText("inspectorBadge", info.badge);
+      setText("inspectorTitle", info.title);
+      setText("inspectorDesc", info.desc);
+      setText("inspectorCodeBox", info.code);
+    }
+
+    document.querySelectorAll("[data-node]").forEach((el) => {
+      const key = el.getAttribute("data-node");
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectInspectorNode(key);
+      });
+      el.addEventListener("mouseenter", () => selectInspectorNode(key));
+    });
+
+    document.getElementById("btnCopyInspector").addEventListener("click", () => {
+      const code = document.getElementById("inspectorCodeBox").textContent;
+      navigator.clipboard.writeText(code);
+      const btn = document.getElementById("btnCopyInspector");
+      btn.textContent = "✅ 코드 복사 완료!";
+      setTimeout(() => { btn.textContent = "📋 코드 전체 복사"; }, 2000);
+    });
+
+    const SCENARIOS = {
+      1: {
+        title: "1단계: A 부서 (AI 연구개발팀) ➔ gemini-3.5-flash (200 OK)",
+        token: "dept-a-rnd-token-2026",
+        deptName: "A 부서 (AI 연구개발팀)",
+        model: "gemini-3.5-flash",
+        prompt: "글로벌 클라우드 아키텍처 보안 감사 체크리스트 핵심 기준 1줄 요약해줘"
+      },
+      2: {
+        title: "1단계: A 부서 (AI 연구개발팀) ➔ gemini-3.1-pro (200 OK)",
+        token: "dept-a-rnd-token-2026",
+        deptName: "A 부서 (AI 연구개발팀)",
+        model: "gemini-3.1-pro",
+        prompt: "열폭주 다물리 유한요소 시뮬레이션 코드 생성 및 실리콘 음극재 팽창률 수식 유도해줘"
+      },
+      3: {
+        title: "2단계 시연 A: B 부서 (품질관리팀) ➔ gemini-3.5-flash (200 OK)",
+        token: "dept-b-quality-token-2026",
+        deptName: "B 부서 (품질관리팀)",
+        model: "gemini-3.5-flash",
+        prompt: "출하 검사 성적서(COA) 텍스트 자동 추출 및 불량률 일일 리포트 요약해줘"
+      },
+      4: {
+        title: "2단계 시연 B: B 부서 (품질관리팀) ➔ gemini-3.1-pro (403 Forbidden 차단!)",
+        token: "dept-b-quality-token-2026",
+        deptName: "B 부서 (품질관리팀)",
+        model: "gemini-3.1-pro",
+        prompt: "고단가 Gemini 3.1 Pro 모델을 무단으로 호출하여 전체 공정 원시 로그 일괄 추론 요청"
+      }
+    };
+
+    let currentScenario = SCENARIOS[1];
+
+    function updateRequestPreview(scenario) {
+      currentScenario = scenario;
+      setText("reqDeptBadge", scenario.deptName);
+      setText(
+        "reqHeadersBox",
+        `Authorization: Bearer ${scenario.token}\nContent-Type: application/json`
+      );
+      const bodyObj = {
+        model: scenario.model,
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: scenario.prompt }]
+          }
+        ]
+      };
+      setText("reqBodyBox", JSON.stringify(bodyObj, null, 2));
+    }
+
+    async function executeScenario(scenarioKey) {
+      const sc = SCENARIOS[scenarioKey];
+      updateRequestPreview(sc);
+
+      if (scenarioKey === 4) {
+        selectInspectorNode("rf");
+      } else {
+        selectInspectorNode("vertex");
+      }
+
+      const statusBadge = document.getElementById("resStatusBadge");
+      statusBadge.className = "px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/20 text-blue-300";
+      statusBadge.textContent = "Apigee Gateway 호출 중...";
+
+      const payload = {
+        model: sc.model,
+        contents: [{ role: "user", parts: [{ text: sc.prompt }] }]
+      };
+
+      try {
+        const res = await fetch("/v1/models:generateContent", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${sc.token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        const formatted = JSON.stringify(data, null, 2);
+
+        if (res.status === 200) {
+          statusBadge.className = "px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+          statusBadge.textContent = "200 OK (Apigee 승인 & BigQuery 적재 완료)";
+          document.getElementById("resBodyBox").className = "code-selectable mono text-xs leading-relaxed p-3.5 rounded-2xl bg-black border border-emerald-500/50 text-emerald-300 h-52 overflow-y-auto whitespace-pre-wrap";
+        } else {
+          statusBadge.className = "px-3 py-1 rounded-full text-xs font-extrabold bg-rose-600 text-white shadow";
+          statusBadge.textContent = `${res.status} Forbidden (Apigee RaiseFault 즉시 차단!)`;
+          document.getElementById("resBodyBox").className = "code-selectable mono text-xs leading-relaxed p-3.5 rounded-2xl bg-rose-950/30 border-2 border-rose-500/70 text-rose-200 h-52 overflow-y-auto whitespace-pre-wrap";
+        }
+        setText("resBodyBox", formatted);
+
+        await loadDashboardStats();
+      } catch (err) {
+        statusBadge.className = "px-3 py-1 rounded-full text-xs font-extrabold bg-rose-500/20 text-rose-300";
+        statusBadge.textContent = "오류 발생";
+        setText("resBodyBox", String(err));
+      }
+    }
+
+    function renderSummaryTable(rows) {
+      const tbody = document.getElementById("summaryTableBody");
+      tbody.replaceChildren();
+
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-900/80 transition";
+
+        const isBlockedRow = r.department_name.includes("B 부서") && r.model === "gemini-3.1-pro";
+
+        const tdDept = document.createElement("td");
+        tdDept.className = "py-3 px-3.5 font-extrabold text-white";
+        tdDept.textContent = r.department_name;
+
+        const tdModel = document.createElement("td");
+        tdModel.className = "py-3 px-3.5 mono font-bold " + (r.model === "gemini-3.1-pro" ? "text-indigo-300" : "text-amber-300");
+        tdModel.textContent = r.model;
+
+        const tdSuccess = document.createElement("td");
+        tdSuccess.className = "py-3 px-3.5 text-right text-emerald-400 font-bold";
+        tdSuccess.textContent = `${Number(r.successful_calls || 0).toLocaleString()} 건`;
+
+        const tdBlocked = document.createElement("td");
+        tdBlocked.className = "py-3 px-3.5 text-right " + (r.blocked_403_calls > 0 ? "text-rose-400 font-extrabold" : "text-slate-500");
+        tdBlocked.textContent = `${Number(r.blocked_403_calls || 0).toLocaleString()} 건`;
+
+        const tdTokens = document.createElement("td");
+        tdTokens.className = "py-3 px-3.5 text-right font-extrabold text-slate-100";
+        tdTokens.textContent = isBlockedRow
+          ? "0 토큰 (호출 차단됨)"
+          : `${Number(r.total_tokens || 0).toLocaleString()} 토큰`;
+
+        const tdUnit = document.createElement("td");
+        tdUnit.className = "py-3 px-3.5 text-right text-slate-300 mono text-xs";
+        const unitKrw = r.model === "gemini-3.1-pro" ? "In $1.25 / Out $5.00" : "In $0.15 / Out $0.60";
+        tdUnit.textContent = unitKrw;
+
+        const tdCost = document.createElement("td");
+        tdCost.className = "py-3 px-3.5 text-right font-extrabold " + (isBlockedRow ? "text-slate-500" : "text-blue-300");
+        tdCost.textContent = `₩${Number(r.total_chargeback_krw || 0).toFixed(2)} ($${Number(r.total_chargeback_usd || 0).toFixed(5)})`;
+
+        const tdPrevented = document.createElement("td");
+        tdPrevented.className = "py-3 px-3.5 text-right font-extrabold " + (r.total_prevented_cost_krw > 0 ? "text-emerald-400" : "text-slate-500");
+        tdPrevented.textContent = r.total_prevented_cost_krw > 0
+          ? `₩${Number(r.total_prevented_cost_krw || 0).toFixed(2)} 절감`
+          : "-";
+
+        tr.append(tdDept, tdModel, tdSuccess, tdBlocked, tdTokens, tdUnit, tdCost, tdPrevented);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderRecentLogs(logs) {
+      const tbody = document.getElementById("recentLogsTableBody");
+      tbody.replaceChildren();
+
+      logs.forEach((item) => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-900/70";
+
+        const tdTime = document.createElement("td");
+        tdTime.className = "py-2.5 px-3.5 mono text-slate-300";
+        tdTime.textContent = (item.timestamp || "").replace("T", " ").slice(11, 19);
+
+        const tdDept = document.createElement("td");
+        tdDept.className = "py-2.5 px-3.5 font-bold text-white";
+        tdDept.textContent = item.department_name;
+
+        const tdModel = document.createElement("td");
+        tdModel.className = "py-2.5 px-3.5 mono text-slate-200 font-semibold";
+        tdModel.textContent = item.model;
+
+        const tdStatus = document.createElement("td");
+        tdStatus.className = "py-2.5 px-3.5 font-bold " + (item.status_code === 200 ? "text-emerald-400" : "text-rose-400");
+        tdStatus.textContent = item.status_code === 200 ? "200 OK" : "403 Forbidden (RaiseFault)";
+
+        const tdTokens = document.createElement("td");
+        tdTokens.className = "py-2.5 px-3.5 text-right mono text-slate-200 font-bold";
+        tdTokens.textContent = Number(item.total_tokens || 0).toLocaleString();
+
+        const tdCost = document.createElement("td");
+        tdCost.className = "py-2.5 px-3.5 text-right mono font-bold " + (item.status_code === 200 ? "text-blue-300" : "text-emerald-400");
+        if (item.status_code === 200) {
+          tdCost.textContent = `₩${Number(item.estimated_cost_krw || 0).toFixed(2)}`;
+        } else {
+          tdCost.textContent = `방어 ₩${Number(item.prevented_cost_krw || 0).toFixed(2)}`;
+        }
+
+        tr.append(tdTime, tdDept, tdModel, tdStatus, tdTokens, tdCost);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateCharts(rows) {
+      const findRow = (deptSub, modelName) =>
+        rows.find((r) => r.department_name.includes(deptSub) && r.model === modelName) || {
+          total_tokens: 0,
+          total_chargeback_krw: 0,
+          blocked_403_calls: 0,
+          total_prevented_cost_krw: 0
+        };
+
+      const aFlash = findRow("A 부서", "gemini-3.5-flash");
+      const aPro = findRow("A 부서", "gemini-3.1-pro");
+      const bFlash = findRow("B 부서", "gemini-3.5-flash");
+      const bPro = findRow("B 부서", "gemini-3.1-pro");
+
+      const deptATotalKrw = Number(aFlash.total_chargeback_krw || 0) + Number(aPro.total_chargeback_krw || 0);
+      const deptATotalTokens = Number(aFlash.total_tokens || 0) + Number(aPro.total_tokens || 0);
+      const deptBTotalKrw = Number(bFlash.total_chargeback_krw || 0);
+      const deptBTotalTokens = Number(bFlash.total_tokens || 0);
+
+      setText("kpiDeptAKrw", `₩${deptATotalKrw.toFixed(2)}`);
+      setText("kpiDeptATokens", `${deptATotalTokens.toLocaleString()} 토큰 (Flash + Pro)`);
+      setText("kpiDeptBKrw", `₩${deptBTotalKrw.toFixed(2)}`);
+      setText("kpiDeptBTokens", `${deptBTotalTokens.toLocaleString()} 토큰 (Flash 전용)`);
+      setText("kpiBlockedCount", `${Number(bPro.blocked_403_calls || 0).toLocaleString()} 건`);
+      setText("kpiPreventedKrw", `₩${Number(bPro.total_prevented_cost_krw || 0).toFixed(2)}`);
+
+      const labels = ["A 부서 (AI 연구개발팀)", "B 부서 (품질관리팀)"];
+
+      // Chart 1: Tokens
+      const ctxTokens = document.getElementById("chartTokens").getContext("2d");
+      if (tokenChart) tokenChart.destroy();
+      tokenChart = new Chart(ctxTokens, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Gemini 3.5 Flash (토큰)",
+              data: [aFlash.total_tokens, bFlash.total_tokens],
+              backgroundColor: "rgba(56, 189, 248, 0.85)",
+              borderRadius: 8
+            },
+            {
+              label: "Gemini 3.1 Pro (토큰)",
+              data: [aPro.total_tokens, bPro.total_tokens],
+              backgroundColor: "rgba(129, 140, 248, 0.9)",
+              borderRadius: 8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#f1f5f9", font: { size: 12, weight: "bold" } } }
+          },
+          scales: {
+            x: { ticks: { color: "#f1f5f9", font: { weight: "bold" } }, grid: { color: "rgba(148,163,184,0.12)" } },
+            y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148,163,184,0.12)" } }
+          }
+        }
+      });
+
+      // Chart 2: Chargeback KRW
+      const ctxChargeback = document.getElementById("chartChargeback").getContext("2d");
+      if (chargebackChart) chargebackChart.destroy();
+      chargebackChart = new Chart(ctxChargeback, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Gemini 3.5 Flash 정산액 (₩)",
+              data: [aFlash.total_chargeback_krw, bFlash.total_chargeback_krw],
+              backgroundColor: "rgba(45, 212, 191, 0.85)",
+              borderRadius: 8
+            },
+            {
+              label: "Gemini 3.1 Pro 정산액 (₩)",
+              data: [aPro.total_chargeback_krw, bPro.total_chargeback_krw],
+              backgroundColor: "rgba(244, 63, 94, 0.9)",
+              borderRadius: 8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#f1f5f9", font: { size: 12, weight: "bold" } } }
+          },
+          scales: {
+            x: { ticks: { color: "#f1f5f9", font: { weight: "bold" } }, grid: { color: "rgba(148,163,184,0.12)" } },
+            y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148,163,184,0.12)" } }
+          }
+        }
+      });
+    }
+
+    async function loadDashboardStats() {
+      try {
+        const res = await fetch("/api/dashboard-stats");
+        const data = await res.json();
+        setText("guideProjectId", data.project_id);
+
+        if (data.summary && data.summary.length > 0) {
+          renderSummaryTable(data.summary);
+          updateCharts(data.summary);
+        }
+        if (data.recent_logs) {
+          renderRecentLogs(data.recent_logs);
+        }
+      } catch (err) {
+        console.warn("Dashboard load warning:", err);
+      }
+    }
+
+    document.getElementById("btnScenario1").addEventListener("click", () => executeScenario(1));
+    document.getElementById("btnScenario2").addEventListener("click", () => executeScenario(2));
+    document.getElementById("btnScenario3").addEventListener("click", () => executeScenario(3));
+    document.getElementById("btnScenario4").addEventListener("click", () => executeScenario(4));
+
+    document.getElementById("btnRefreshDashboard").addEventListener("click", () => loadDashboardStats());
+
+    document.getElementById("btnResetBq").addEventListener("click", async () => {
+      const btn = document.getElementById("btnResetBq");
+      btn.textContent = "⏳ BigQuery 초기화 중...";
+      try {
+        await fetch("/api/reset-bigquery", { method: "POST" });
+        await loadDashboardStats();
+      } finally {
+        btn.textContent = "🗑️ BigQuery 0건 초기화";
+      }
+    });
+
+    document.getElementById("btnSeedTraffic").addEventListener("click", async () => {
+      const btn = document.getElementById("btnSeedTraffic");
+      btn.textContent = "⏳ 실제 Vertex AI & Apigee 4건 실행 중...";
+      try {
+        await fetch("/api/seed-traffic", { method: "POST" });
+        await loadDashboardStats();
+      } finally {
+        btn.textContent = "⚡ 실제 Vertex AI & Apigee 4건 연속 호출";
+      }
+    });
+
+    document.getElementById("btnCopyCurl").addEventListener("click", () => {
+      const curlCmd = `curl -X POST "${window.location.origin}/v1/models:generateContent" \\\n  -H "Authorization: Bearer ${currentScenario.token}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${currentScenario.model}", "contents": [{"role": "user", "parts": [{"text": "${currentScenario.prompt}"}]}]}'`;
+      navigator.clipboard.writeText(curlCmd);
+      const btn = document.getElementById("btnCopyCurl");
+      btn.textContent = "✅ cURL 복사 완료!";
+      setTimeout(() => { btn.textContent = "📋 cURL 명령어 복사"; }, 2000);
+    });
+
+    // Initial load
+    updateRequestPreview(SCENARIOS[1]);
+    loadDashboardStats();
+  </script>
+</body>
+</html>

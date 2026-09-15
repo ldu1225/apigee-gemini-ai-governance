@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<APIProxy revision="1" name="gemini-ai-governance">
+    <DisplayName>Gemini Enterprise AI Governance &amp; Chargeback Gateway</DisplayName>
+    <Description>Apigee AI Gateway proxy enforcing Department x Model RBAC (Gemini 3.5 Flash vs 3.1 Pro) via RaiseFault and streaming real-time token chargeback metrics to BigQuery.</Description>
+    <CreatedAt>1757900000000</CreatedAt>
+    <LastModifiedAt>1757900000000</LastModifiedAt>
+    <BasePaths>/v1/models</BasePaths>
+    <Policies>
+        <Policy>EV-ExtractModelAndDept</Policy>
+        <Policy>RF-UnauthorizedModel403</Policy>
+        <Policy>SC-BigQueryLogUsage</Policy>
+    </Policies>
+    <ProxyEndpoints>
+        <ProxyEndpoint>default</ProxyEndpoint>
+    </ProxyEndpoints>
+    <TargetEndpoints>
+        <TargetEndpoint>default</TargetEndpoint>
+    </TargetEndpoints>
+</APIProxy>

@@ -1,0 +1,20 @@
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Secrets & local configs
+.env
+*.env
+*.json.key
+service-account*.json
+credentials*.json
+*secret*
+
+# Build artifacts & temporary files
+*.zip
+*.log
+.DS_Store

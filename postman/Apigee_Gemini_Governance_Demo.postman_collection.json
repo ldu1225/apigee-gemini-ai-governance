@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "🎬 Apigee x Gemini AI Governance & Chargeback Demo",
+    "_postman_id": "apigee-gemini-governance-demo-2026",
+    "description": "고객 시연 데모용 Postman Collection (Gemini 3.5 Flash & 3.1 Pro 부서별 권한 제어 및 실시간 BigQuery/Looker Studio 정산)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "GATEWAY_URL",
+      "value": "http://127.0.0.1:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1단계 (A부서 AI 연구개발팀) - Gemini 3.5 Flash 호출 (200 OK)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dept-a-rnd-token-2026",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model\": \"gemini-3.5-flash\",\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"글로벌 클라우드 아키텍처 보안 감사 체크리스트 1줄 요약해줘\"\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{GATEWAY_URL}}/v1/models:generateContent",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["v1", "models:generateContent"]
+        },
+        "description": "현업 개발자는 모델명(gemini-3.5-flash)만 지정하고 Apigee 주소와 부서 토큰만 넣어 호출합니다."
+      }
+    },
+    {
+      "name": "1단계 (A부서 AI 연구개발팀) - Gemini 3.1 Pro 호출 (200 OK)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dept-a-rnd-token-2026",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model\": \"gemini-3.1-pro\",\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"엔터프라이즈 마이크로서비스 장애 대응 매뉴얼 및 아키텍처 설계 기준 요약해줘\"\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{GATEWAY_URL}}/v1/models:generateContent",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["v1", "models:generateContent"]
+        },
+        "description": "A부서(AI 연구개발팀)는 고성능 Gemini 3.1 Pro 호출 권한이 있으므로 200 OK 응답과 함께 BigQuery에 Pro 단가로 실시간 적재됩니다."
+      }
+    },
+    {
+      "name": "2단계 시연 A (B부서 품질관리팀) - Gemini 3.5 Flash 정상 호출 (200 OK)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dept-b-quality-token-2026",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model\": \"gemini-3.5-flash\",\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"서비스 품질 점검 리포트(QA) 텍스트 자동 추출 및 불량률 일일 리포트 요약해줘\"\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{GATEWAY_URL}}/v1/models:generateContent",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["v1", "models:generateContent"]
+        },
+        "description": "B부서(품질관리팀) 토큰으로 인가된 기본 모델인 gemini-3.5-flash 호출 시 200 OK 정상 응답이 반환됩니다."
+      }
+    },
+    {
+      "name": "🚨 2단계 시연 B (B부서 품질관리팀) - Gemini 3.1 Pro 무단 호출 (403 Forbidden 차단!)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dept-b-quality-token-2026",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model\": \"gemini-3.1-pro\",\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"고단가 Gemini 3.1 Pro 모델을 무단으로 호출하여 전체 공정 원시 로그 일괄 추론 요청\"\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{GATEWAY_URL}}/v1/models:generateContent",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["v1", "models:generateContent"]
+        },
+        "description": "Apigee RaiseFault 정책(RF-UnauthorizedModel403)이 백엔드 도달 전에 즉시 403 Forbidden으로 차단하며 'Access Denied: Quality Dept is not authorized to call [gemini-3.1-pro].' 메시지를 반환합니다."
+      }
+    }
+  ]
+}

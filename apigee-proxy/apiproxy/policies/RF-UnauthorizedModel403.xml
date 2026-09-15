@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault async="false" continueOnError="false" enabled="true" name="RF-UnauthorizedModel403">
+    <DisplayName>RF-UnauthorizedModel403</DisplayName>
+    <Properties/>
+    <FaultResponse>
+        <Set>
+            <Headers>
+                <Header name="Content-Type">application/json; charset=utf-8</Header>
+                <Header name="X-Apigee-Policy">RF-UnauthorizedModel403</Header>
+                <Header name="X-Apigee-Blocked-Reason">Department RBAC Violation</Header>
+            </Headers>
+            <Payload contentType="application/json">{
+  "error": {
+    "code": 403,
+    "status": "PERMISSION_DENIED",
+    "message": "Access Denied: Quality Dept is not authorized to call [gemini-3.1-pro].",
+    "policy": "Apigee-RaiseFault-Model-RBAC",
+    "department": "B 부서 (품질관리팀)",
+    "requested_model": "gemini-3.1-pro",
+    "allowed_models": ["gemini-3.5-flash"]
+  }
+}</Payload>
+            <StatusCode>403</StatusCode>
+            <ReasonPhrase>Forbidden</ReasonPhrase>
+        </Set>
+    </FaultResponse>
+    <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>
