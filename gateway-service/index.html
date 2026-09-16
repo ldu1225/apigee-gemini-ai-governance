@@ -1016,18 +1016,25 @@ GROUP BY
     }
 
     function updateCharts(rows) {
-      const findRow = (deptSub, modelName) =>
-        rows.find((r) => r.department_name.includes(deptSub) && r.model === modelName) || {
-          total_tokens: 0,
-          total_chargeback_krw: 0,
-          blocked_403_calls: 0,
-          total_prevented_cost_krw: 0
-        };
+      const findRow = (deptId, deptSub, modelName) => {
+        const matches = rows.filter(
+          (r) => (r.department_id === deptId || (r.department_name && r.department_name.includes(deptSub))) && r.model === modelName
+        );
+        return matches.reduce(
+          (acc, r) => ({
+            total_tokens: acc.total_tokens + Number(r.total_tokens || 0),
+            total_chargeback_krw: acc.total_chargeback_krw + Number(r.total_chargeback_krw || 0),
+            blocked_403_calls: acc.blocked_403_calls + Number(r.blocked_403_calls || 0),
+            total_prevented_cost_krw: acc.total_prevented_cost_krw + Number(r.total_prevented_cost_krw || 0)
+          }),
+          { total_tokens: 0, total_chargeback_krw: 0, blocked_403_calls: 0, total_prevented_cost_krw: 0 }
+        );
+      };
 
-      const aFlash = findRow("A 부서", "gemini-3.5-flash");
-      const aPro = findRow("A 부서", "gemini-3.1-pro");
-      const bFlash = findRow("B 부서", "gemini-3.5-flash");
-      const bPro = findRow("B 부서", "gemini-3.1-pro");
+      const aFlash = findRow("dept-a", "A 부서", "gemini-3.5-flash");
+      const aPro = findRow("dept-a", "A 부서", "gemini-3.1-pro");
+      const bFlash = findRow("dept-b", "B 부서", "gemini-3.5-flash");
+      const bPro = findRow("dept-b", "B 부서", "gemini-3.1-pro");
 
       const deptATotalKrw = Number(aFlash.total_chargeback_krw || 0) + Number(aPro.total_chargeback_krw || 0);
       const deptATotalTokens = Number(aFlash.total_tokens || 0) + Number(aPro.total_tokens || 0);

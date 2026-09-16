@@ -87,7 +87,15 @@ import subprocess
 from google.oauth2.credentials import Credentials
 
 
+_BQ_CLIENT: Optional[bigquery.Client] = None
+_TOKEN_CACHE: Dict[str, Any] = {"token": None, "expires_at": 0}
+
+
 def get_gcloud_creds():
+    import time
+    now = time.time()
+    if _TOKEN_CACHE["token"] and now < _TOKEN_CACHE["expires_at"]:
+        return Credentials(token=_TOKEN_CACHE["token"])
     try:
         cmd = ["gcloud", "auth", "print-access-token"]
         account = os.environ.get("GCP_ACCOUNT")
@@ -98,6 +106,8 @@ def get_gcloud_creds():
             stderr=subprocess.DEVNULL,
         ).decode().strip()
         if token:
+            _TOKEN_CACHE["token"] = token
+            _TOKEN_CACHE["expires_at"] = now + 1800  # Cache token for 30 mins
             return Credentials(token=token)
     except Exception:
         pass
@@ -105,15 +115,23 @@ def get_gcloud_creds():
 
 
 def get_bq_client() -> Optional[bigquery.Client]:
+    global _BQ_CLIENT
+    if _BQ_CLIENT is not None:
+        return _BQ_CLIENT
     try:
-        return bigquery.Client(
+        _BQ_CLIENT = bigquery.Client(
             project=PROJECT_ID,
             credentials=get_gcloud_creds(),
             client_options={"quota_project_id": PROJECT_ID},
         )
+        return _BQ_CLIENT
     except Exception as e:
         logger.warning(f"BigQuery client init warning: {e}")
         return None
+
+
+# Full session ledger to guarantee instant, zero-latency stats updates even if gcloud token expires
+ALL_LEDGER_ROWS: List[Dict[str, Any]] = []
 
 
 def _bq_worker(project_id: str, table_ref: str, row: Dict[str, Any]):
@@ -123,7 +141,6 @@ def _bq_worker(project_id: str, table_ref: str, row: Dict[str, Any]):
             return
         errors = client.insert_rows_json(table_ref, [row])
         if errors:
-            # Fallback to LoadJob if streaming buffer has any issue
             job_config = bigquery.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_APPEND)
             client.load_table_from_json([row], table_ref, job_config=job_config).result(timeout=15)
         logger.info(f"Logged request {row['request_id']} to BigQuery table {table_ref}")
@@ -132,13 +149,14 @@ def _bq_worker(project_id: str, table_ref: str, row: Dict[str, Any]):
 
 
 def record_to_bigquery(row: Dict[str, Any]):
+    ALL_LEDGER_ROWS.append(row)
     RECENT_LOGS.insert(0, row)
     if len(RECENT_LOGS) > 50:
         RECENT_LOGS.pop()
 
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
-    t = threading.Thread(target=_bq_worker, args=(PROJECT_ID, table_ref, row), daemon=True)
-    t.start()
+    # Attempt synchronous BigQuery insert if credentials are active
+    _bq_worker(PROJECT_ID, table_ref, row)
 
 
 class GeminiRequest(BaseModel):
@@ -366,11 +384,52 @@ async def apigee_gemini_gateway(
     )
 
 
+def _aggregate_ledger_rows(ledger: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    groups: Dict[tuple, Dict[str, Any]] = {}
+    for r in ledger:
+        dept_id = r.get("department_id", "dept-a")
+        dept_name = "A 부서 (AI 연구개발팀)" if dept_id == "dept-a" else "B 부서 (품질관리팀)"
+        model_name = r.get("model", "gemini-3.5-flash")
+        key = (dept_id, model_name)
+        if key not in groups:
+            groups[key] = {
+                "department_id": dept_id,
+                "department_name": dept_name,
+                "model": model_name,
+                "successful_calls": 0,
+                "blocked_403_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "unit_price_per_1k_usd": r.get("unit_price_per_1k_usd", 0.0003),
+                "total_chargeback_usd": 0.0,
+                "total_chargeback_krw": 0.0,
+                "total_prevented_cost_usd": 0.0,
+                "total_prevented_cost_krw": 0.0,
+            }
+        g = groups[key]
+        status = int(r.get("status_code", 200))
+        if status == 200:
+            g["successful_calls"] += 1
+            g["prompt_tokens"] += int(r.get("prompt_tokens", 0))
+            g["completion_tokens"] += int(r.get("completion_tokens", 0))
+            g["total_tokens"] += int(r.get("total_tokens", 0))
+            g["total_chargeback_usd"] = round(g["total_chargeback_usd"] + float(r.get("estimated_cost_usd", 0.0)), 6)
+            g["total_chargeback_krw"] = round(g["total_chargeback_krw"] + float(r.get("estimated_cost_krw", 0.0)), 2)
+        elif status == 403:
+            g["blocked_403_calls"] += 1
+            g["total_prevented_cost_usd"] = round(g["total_prevented_cost_usd"] + float(r.get("prevented_cost_usd", 0.0)), 6)
+            g["total_prevented_cost_krw"] = round(g["total_prevented_cost_krw"] + float(r.get("prevented_cost_krw", 0.0)), 2)
+    return sorted(groups.values(), key=lambda x: (x["department_id"], x["model"]))
+
+
 @app.get("/api/dashboard-stats")
 async def get_dashboard_stats():
     """
     Queries BigQuery View v_looker_dept_model_chargeback in real time
     to power the Looker Studio & Chargeback Web Dashboard.
+    If BigQuery credentials expired or streaming buffer is catching up,
+    merges/aggregates ALL_LEDGER_ROWS for instant zero-latency UI updates.
     """
     client = get_bq_client()
     rows = []
@@ -379,29 +438,42 @@ async def get_dashboard_stats():
             sql = f"""
             SELECT
               department_id,
-              department_name,
+              IF(department_id = 'dept-a', 'A 부서 (AI 연구개발팀)', 'B 부서 (품질관리팀)') AS department_name,
               model,
-              successful_calls,
-              blocked_403_calls,
-              prompt_tokens,
-              completion_tokens,
-              total_tokens,
-              unit_price_per_1k_usd,
-              total_chargeback_usd,
-              total_chargeback_krw,
-              total_prevented_cost_usd,
-              total_prevented_cost_krw
+              COUNTIF(status_code = 200) AS successful_calls,
+              COUNTIF(status_code = 403) AS blocked_403_calls,
+              SUM(IF(status_code = 200, prompt_tokens, 0)) AS prompt_tokens,
+              SUM(IF(status_code = 200, completion_tokens, 0)) AS completion_tokens,
+              SUM(IF(status_code = 200, total_tokens, 0)) AS total_tokens,
+              ANY_VALUE(unit_price_per_1k_usd) AS unit_price_per_1k_usd,
+              ROUND(SUM(IF(status_code = 200, estimated_cost_usd, 0)), 6) AS total_chargeback_usd,
+              ROUND(SUM(IF(status_code = 200, estimated_cost_krw, 0)), 2) AS total_chargeback_krw,
+              ROUND(SUM(IF(status_code = 403, prevented_cost_usd, 0)), 6) AS total_prevented_cost_usd,
+              ROUND(SUM(IF(status_code = 403, prevented_cost_krw, 0)), 2) AS total_prevented_cost_krw
             FROM
-              `{PROJECT_ID}.{DATASET_ID}.v_looker_dept_model_chargeback`
+              `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}`
+            GROUP BY
+              department_id,
+              model
             ORDER BY
-              department_name ASC,
+              department_id ASC,
               model ASC
             """
-            query_job = client.query(sql)
+            job_config = bigquery.QueryJobConfig(use_query_cache=False)
+            query_job = client.query(sql, job_config=job_config)
             for r in query_job.result():
                 rows.append(dict(r))
         except Exception as e:
             logger.warning(f"BigQuery stats query warning: {e}")
+
+    # Always merge or fall back to ALL_LEDGER_ROWS so every single live click/seed reflects immediately
+    if not rows and ALL_LEDGER_ROWS:
+        rows = _aggregate_ledger_rows(ALL_LEDGER_ROWS)
+    elif rows and ALL_LEDGER_ROWS:
+        # Compare total call count in BigQuery vs ALL_LEDGER_ROWS
+        bq_calls = sum(r.get("successful_calls", 0) + r.get("blocked_403_calls", 0) for r in rows)
+        if len(ALL_LEDGER_ROWS) > bq_calls:
+            rows = _aggregate_ledger_rows(ALL_LEDGER_ROWS)
 
     return {
         "project_id": PROJECT_ID,
@@ -453,13 +525,17 @@ async def reset_bigquery_table():
     """
     from bigquery.provision_bq import get_schema
 
+    ALL_LEDGER_ROWS.clear()
     RECENT_LOGS.clear()
     client = get_bq_client()
     if client:
-        table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
-        client.delete_table(table_ref, not_found_ok=True)
-        table = bigquery.Table(table_ref, schema=get_schema())
-        client.create_table(table)
+        try:
+            table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
+            client.delete_table(table_ref, not_found_ok=True)
+            table = bigquery.Table(table_ref, schema=get_schema())
+            client.create_table(table)
+        except Exception as e:
+            logger.warning(f"BigQuery reset warning: {e}")
 
     return {
         "status": "reset",
